@@ -76,28 +76,30 @@ void *worker(void *arg) {
     pthread_mutex_lock(&(logfs->worker->lock));
 
     while (!logfs->worker->done) {
-        if (logfs->w_buffer->size < BLOCK_SIZE) {
+        if (logfs->w_buffer->size < logfs->block_size) {
             pthread_cond_wait(&(logfs->worker->data_avail), &(logfs->worker->lock));
             continue;
         }
-        //good
-        size_t a_src = logfs->w_buffer->buffer + (logfs->w_buffer->tail%logfs->w_buffer->buffer_size);
-        size_t a_dest = logfs->w_buffer->tail;
+        /*good*/
 
-        device_write(a_src, a_dest, BLOCK_SIZE,0);
-        logfs->w_buffer->tail += BLOCK_SIZE;
-        logfs->w_buffer->size -= BLOCK_SIZE;
+        /*device_write((size_t)logfs->w_buffer->buffer + (logfs->w_buffer->tail%logfs->w_buffer->buffer_size), logfs->w_buffer->tail, logfs->block_size,0);*/
+        device_write(logfs->device, (void*)((size_t)logfs->w_buffer->buffer + (size_t)(logfs->w_buffer->tail%logfs->w_buffer->buffer_size)), logfs->w_buffer->tail, logfs->block_size);
+        logfs->w_buffer->tail += logfs->block_size;
+        logfs->w_buffer->size -= logfs->block_size;
         pthread_cond_signal(&(logfs->worker->space_avail));
     }
     
     pthread_mutex_unlock(&(logfs->worker->lock));
+    return NULL;
 }
 
 int logfs_append(struct logfs *logfs, const void *buf, uint64_t len) {
     if((len+(logfs->w_buffer->head)) > logfs->device_capacity) {
-        //ERROR no space
+        /*ERROR no space*/
         TRACE("Not enough memory");
     }
+
+    UNUSED(buf);
 
     assert(len <= logfs->w_buffer->buffer_size);
     pthread_mutex_lock(&(logfs->worker->lock));
@@ -121,7 +123,7 @@ int logfs_append(struct logfs *logfs, const void *buf, uint64_t len) {
 
     logfs->w_buffer->head += len;
     logfs->w_buffer->size += len;
-
+    return 0;
 }
 
 struct logfs *logfs_open(const char *pathname) {
@@ -135,11 +137,13 @@ struct logfs *logfs_open(const char *pathname) {
     }
     memset(logfs, 0, sizeof(struct logfs));
 
-    if (setup_device(logfs, pathname) || setup_queue(logfs) || setup_cache(logfs) || setup_worker(logfs)) {
+    if (set_device(logfs, pathname) || set_w_buffer(logfs) ||/* setup_cache(logfs) ||*/ setup_worker(logfs)) {
         logfs_close(logfs);
         TRACE(0);
         return NULL;
     }
+
+    return logfs;
 }
 
 /*my func*/

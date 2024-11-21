@@ -60,4 +60,11 @@ int logfs_read(struct logfs *logfs, void *buf, uint64_t off, size_t len);
 
 int logfs_append(struct logfs *logfs, const void *buf, uint64_t len);
 
+/*my func*/
+int set_device(struct logfs *logfs, const char *pathname);
+
+int set_w_buffer(struct logfs *logfs);
+
+int setup_worker(struct logfs *logfs);
+
 #endif /* _LOGFS_H_ */
