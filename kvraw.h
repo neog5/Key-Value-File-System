@@ -32,4 +32,6 @@ int kvraw_append(struct kvraw *kvraw,
 		 uint64_t val_len,
 		 uint64_t *off);
 
+uint64_t kvraw_size(struct kvraw *kvraw);
+
 #endif /* _KVRAW_H_ */

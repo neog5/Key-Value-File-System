@@ -9,7 +9,6 @@
 
 #ifndef _KVDB_H_
 #define _KVDB_H_
-
 #include "system.h"
 
 #define KVDB_MAX_KEY_LEN 0xffff

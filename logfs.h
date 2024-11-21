@@ -60,4 +60,6 @@ int logfs_read(struct logfs *logfs, void *buf, uint64_t off, size_t len);
 
 int logfs_append(struct logfs *logfs, const void *buf, uint64_t len);
 
+uint64_t logfs_size(struct logfs *logfs);
+
 #endif /* _LOGFS_H_ */

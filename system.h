@@ -24,6 +24,8 @@
 #define MIN(x,y) ( ((x) < (y)) ? (x) : (y) )
 #define MAX(x,y) ( ((x) > (y)) ? (x) : (y) )
 
+#define RESTORE_FROM_FILE 1
+
 #define ARRAY_SIZE(a) ( (sizeof (a)) / (sizeof (a[0])) )
 
 #define UNUSED(s)				\
