@@ -51,13 +51,7 @@ struct r_buffer {
 };
 
 struct worker {
-
-};
-
-struct logfs {
-    struct w_buffer *w_buffer;
-    size_t capacity;
-    pthread_t worked;
+    pthread_t thread;
     pthread_mutex_t lock;
     pthread_cond_t data_avail;
     pthread_cond_t space_avail;
@@ -66,56 +60,160 @@ struct logfs {
     /* a background thread copies items */
 };
 
+struct logfs {
+    struct w_buffer *w_buffer;
+    struct worker *worker;
+    struct device *device;
+    size_t device_capacity;
+    size_t block_size;
+};
+
 
 /* assert(0==(tail%block_size)) */
 
-int worker(struct logfs *logfs) {
-    pthread_mutex_lock(&(logfs->lock));
-    while (!logfs->done) {
-        if (logfs->w_buffer->size < BLOCK_SIZE) {
-            pthread_cond_wait(&(logfs->data_avail), &(logfs->lock));
+void *worker(void *arg) {
+    struct logfs *logfs = arg;
+    pthread_mutex_lock(&(logfs->worker->lock));
+
+    while (!logfs->worker->done) {
+        if (logfs->w_buffer->size < logfs->block_size) {
+            pthread_cond_wait(&(logfs->worker->data_avail), &(logfs->worker->lock));
             continue;
         }
-        //good
-        size_t a_src = logfs->w_buffer->buffer + (logfs->w_buffer->tail%logfs->w_buffer->buffer_size);
-        size_t a_dest = logfs->w_buffer->tail;
+        /*good*/
 
-        device_write(a_src, a_dest, BLOCK_SIZE,0);
-        logfs->w_buffer->tail += BLOCK_SIZE;
-        logfs->w_buffer->size -= BLOCK_SIZE;
-        pthread_cond_signal(&(logfs->space_avail));
+        /*device_write((size_t)logfs->w_buffer->buffer + (logfs->w_buffer->tail%logfs->w_buffer->buffer_size), logfs->w_buffer->tail, logfs->block_size,0);*/
+        device_write(logfs->device, (void*)((size_t)logfs->w_buffer->buffer + (size_t)(logfs->w_buffer->tail%logfs->w_buffer->buffer_size)), logfs->w_buffer->tail, logfs->block_size);
+        logfs->w_buffer->tail += logfs->block_size;
+        logfs->w_buffer->size -= logfs->block_size;
+        pthread_cond_signal(&(logfs->worker->space_avail));
     }
     
-    pthread_mutex_unlock(&(logfs->lock));
-    return 0;
+    pthread_mutex_unlock(&(logfs->worker->lock));
+    return NULL;
 }
 
 int logfs_append(struct logfs *logfs, const void *buf, uint64_t len) {
-    if((len+(logfs->w_buffer->head)) > logfs->capacity) {
-        //ERROR no space
+    size_t remain_block;
+    size_t buf_head = (size_t)logfs->w_buffer->buffer+(logfs->w_buffer->head%logfs->w_buffer->buffer_size);
+    if((len+(logfs->w_buffer->head)) > logfs->device_capacity) {
+        /*ERROR no space*/
         TRACE("Not enough memory");
     }
 
+    UNUSED(buf);
+
     assert(len <= logfs->w_buffer->buffer_size);
-    pthread_mutex_lock(&(logfs->lock));
+    pthread_mutex_lock(&(logfs->worker->lock));
 
     for(;;) {
         if((logfs->w_buffer->buffer_size - logfs->w_buffer->size) < len) {
-            pthread_cond_wait(&(logfs->space_avail), &(logfs->lock));
+            pthread_cond_wait(&(logfs->worker->space_avail), &(logfs->worker->lock));
             continue;  
         }
         break;
     }
 
     /* data split at the end of the buffer */
-    if() {
-        memcpy(logfs->w_buffer->buffer+(logfs->w_buffer->head%logfs->w_buffer->buffer_size),buf,len);
+    if((logfs->w_buffer->head + len)%(logfs->w_buffer->buffer_size) > (logfs->w_buffer->head)%(logfs->w_buffer->buffer_size)) {
+        memcpy((void *)(buf_head),buf,len);
     } else {
-        memcpy();
-        memcpy();
+        remain_block = logfs->w_buffer->buffer_size-(logfs->w_buffer->head%logfs->w_buffer->buffer_size);
+        memcpy((void *)(buf_head),buf,remain_block);
+        memcpy(logfs->w_buffer->buffer,(void *)((size_t)buf+remain_block),len-remain_block);
     }
 
     logfs->w_buffer->head += len;
     logfs->w_buffer->size += len;
-
+    return 0;
 }
+
+struct logfs *logfs_open(const char *pathname) {
+    struct logfs  *logfs;
+
+    assert(safe_strlen(pathname));
+
+    if (!(logfs = malloc(sizeof(struct logfs)))) {
+        TRACE("out of memory");
+        return NULL;
+    }
+    memset(logfs, 0, sizeof(struct logfs));
+
+    if (set_device(logfs, pathname) || set_w_buffer(logfs) ||/* setup_cache(logfs) ||*/ set_worker(logfs)) {
+        logfs_close(logfs);
+        TRACE(0);
+        return NULL;
+    }
+
+    return logfs;
+}
+
+/*my func*/
+int set_device(struct logfs *logfs, const char *pathname) {
+    if (!(logfs->device = device_open(pathname))) {
+        return 1;
+    }
+
+    logfs->device_capacity = device_size(logfs->device);
+    logfs->block_size = device_block(logfs->device);
+
+    return 0;
+}
+
+/*my func*/
+int set_w_buffer(struct logfs *logfs) {
+    if (!(logfs->w_buffer = malloc(sizeof(struct w_buffer)))) {
+        return 1;
+    }
+    memset(logfs->w_buffer, 0, sizeof(struct w_buffer));
+
+    logfs->w_buffer->head = 0;
+    logfs->w_buffer->tail = 0;
+    logfs->w_buffer->buffer_size = logfs->block_size * WCACHE_BLOCKS;
+
+    if (!(logfs->w_buffer->buffer_ = malloc(logfs->w_buffer->buffer_size + logfs->block_size))) {
+        return 1;
+    }
+    memset(logfs->w_buffer->buffer_, 0, logfs->w_buffer->buffer_size);
+
+    logfs->w_buffer->buffer = memory_align(logfs->w_buffer->buffer_,logfs->block_size);
+
+    return 0;
+}
+
+/*my func*/
+int set_worker(struct logfs *logfs) {
+    if (!(logfs->worker = malloc(sizeof(struct worker)))) {
+        return 1;
+    }
+    memset(logfs->worker, 0, sizeof(struct worker));
+
+    if (pthread_mutex_init(&logfs->worker->lock, NULL) ||
+        pthread_cond_init(&logfs->worker->data_avail, NULL) ||
+        pthread_cond_init(&logfs->worker->space_avail, NULL) ||
+        pthread_create(&logfs->worker->thread, NULL, worker, logfs)) {
+        return 1;
+    }
+
+    return 0;
+}
+/*
+static void flush(logfs) {
+    mutext_lock(&lock) */ /*wait will relinquish the lock*/ 
+    /*calc how much data is pending that is less than a block*/
+    /*adjust your head and tail on for the lower end */
+    /*do a fake write for remaining vars*/
+    /*
+    while(logfs->size >= 0) {
+        signal(data_avail,&lock);
+        wait(space_avail,&lock))
+    }
+    */
+    /*change head and tail back to normal*/
+/*
+}
+*/
+
+/*interval analysis method instead of flush?*/
+/*flush needed for extra credit*/
+/**/
