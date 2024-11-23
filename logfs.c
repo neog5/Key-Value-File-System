@@ -94,6 +94,8 @@ void *worker(void *arg) {
 }
 
 int logfs_append(struct logfs *logfs, const void *buf, uint64_t len) {
+    size_t remain_block;
+    size_t buf_head = (size_t)logfs->w_buffer->buffer+(logfs->w_buffer->head%logfs->w_buffer->buffer_size);
     if((len+(logfs->w_buffer->head)) > logfs->device_capacity) {
         /*ERROR no space*/
         TRACE("Not enough memory");
@@ -112,14 +114,14 @@ int logfs_append(struct logfs *logfs, const void *buf, uint64_t len) {
         break;
     }
 
-    /* data split at the end of the buffer 
-    if() {
-        memcpy(logfs->w_buffer->buffer+(logfs->w_buffer->head%logfs->w_buffer->buffer_size),buf,len);
+    /* data split at the end of the buffer */
+    if((logfs->w_buffer->head + len)%(logfs->w_buffer->buffer_size) > (logfs->w_buffer->head)%(logfs->w_buffer->buffer_size)) {
+        memcpy((void *)(buf_head),buf,len);
     } else {
-        memcpy();
-        memcpy();
+        remain_block = logfs->w_buffer->buffer_size-(logfs->w_buffer->head%logfs->w_buffer->buffer_size);
+        memcpy((void *)(buf_head),buf,remain_block);
+        memcpy(logfs->w_buffer->buffer,(void *)((size_t)buf+remain_block),len-remain_block);
     }
-    */
 
     logfs->w_buffer->head += len;
     logfs->w_buffer->size += len;
@@ -137,7 +139,7 @@ struct logfs *logfs_open(const char *pathname) {
     }
     memset(logfs, 0, sizeof(struct logfs));
 
-    if (set_device(logfs, pathname) || set_w_buffer(logfs) ||/* setup_cache(logfs) ||*/ setup_worker(logfs)) {
+    if (set_device(logfs, pathname) || set_w_buffer(logfs) ||/* setup_cache(logfs) ||*/ set_worker(logfs)) {
         logfs_close(logfs);
         TRACE(0);
         return NULL;
@@ -180,7 +182,7 @@ int set_w_buffer(struct logfs *logfs) {
 }
 
 /*my func*/
-int setup_worker(struct logfs *logfs) {
+int set_worker(struct logfs *logfs) {
     if (!(logfs->worker = malloc(sizeof(struct worker)))) {
         return 1;
     }
@@ -195,3 +197,23 @@ int setup_worker(struct logfs *logfs) {
 
     return 0;
 }
+/*
+static void flush(logfs) {
+    mutext_lock(&lock) */ /*wait will relinquish the lock*/ 
+    /*calc how much data is pending that is less than a block*/
+    /*adjust your head and tail on for the lower end */
+    /*do a fake write for remaining vars*/
+    /*
+    while(logfs->size >= 0) {
+        signal(data_avail,&lock);
+        wait(space_avail,&lock))
+    }
+    */
+    /*change head and tail back to normal*/
+/*
+}
+*/
+
+/*interval analysis method instead of flush?*/
+/*flush needed for extra credit*/
+/**/

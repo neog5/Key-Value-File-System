@@ -65,6 +65,6 @@ int set_device(struct logfs *logfs, const char *pathname);
 
 int set_w_buffer(struct logfs *logfs);
 
-int setup_worker(struct logfs *logfs);
+int set_worker(struct logfs *logfs);
 
 #endif /* _LOGFS_H_ */
