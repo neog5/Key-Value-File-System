@@ -67,4 +67,6 @@ int set_w_buffer(struct logfs *logfs);
 
 int set_worker(struct logfs *logfs);
 
+int set_cache(struct logfs *logfs);
+
 #endif /* _LOGFS_H_ */
